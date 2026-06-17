@@ -57,6 +57,7 @@ static uint8_t percent_val = 50;
 static uint8_t addr_input[4];       /* 4个十六进制字符 */
 static uint8_t addr_pos = 0;        /* 当前输入位置 0~3 */
 static uint8_t addr_sel = 0;        /* 当前选中的hex字符索引 0~15 */
+static uint8_t addr_is_slave = 0;   /* 1=从机请求模式, 0=主动写模式 */
 
 /******************************************************************************************/
 /* 初始化 */
@@ -169,11 +170,24 @@ static void draw_address_input(void)
  */
 static void draw_slave_request(void)
 {
+    char buf[8];
+
     oled_clear();
     oled_show_string(0, 0, "-- Slave Req --", 12);
-    oled_show_string(0, 16, "Waiting for motor", 12);
-    oled_show_string(0, 28, "request frame...", 12);
-    oled_show_string(0, 48, "K0:Cancel", 12);
+
+    /* 显示已输入的地址 */
+    buf[0] = '0';
+    buf[1] = 'x';
+    buf[2] = hex_chars[addr_input[0]];
+    buf[3] = hex_chars[addr_input[1]];
+    buf[4] = hex_chars[addr_input[2]];
+    buf[5] = hex_chars[addr_input[3]];
+    buf[6] = '\0';
+    oled_show_string(0, 14, buf, 12);
+
+    oled_show_string(0, 28, "1.Motor btn 5s", 12);
+    oled_show_string(0, 40, "2.LED x2->K3", 12);
+    oled_show_string(0, 52, "K3:Send  K0:Back", 12);
     oled_refresh_gram();
 }
 
@@ -315,6 +329,7 @@ static void handle_addr_menu(uint8_t key)
             case ADDR_WRITE:
                 printf("[KEY3] -> Write Address (input)\r\n");
                 cur_page = PAGE_ADDRESS_INPUT;
+                addr_is_slave = 0;
                 addr_pos = 0;
                 addr_sel = 0;
                 addr_input[0] = 0;
@@ -325,8 +340,15 @@ static void handle_addr_menu(uint8_t key)
                 break;
 
             case ADDR_SLAVE:
-                printf("[KEY3] -> Slave Request\r\n");
-                cur_page = PAGE_ADDRESS_SLAVE;
+                printf("[KEY3] -> Slave Request (input addr first)\r\n");
+                cur_page = PAGE_ADDRESS_INPUT;
+                addr_is_slave = 1;
+                addr_pos = 0;
+                addr_sel = 0;
+                addr_input[0] = 0;
+                addr_input[1] = 0;
+                addr_input[2] = 0;
+                addr_input[3] = 0;
                 need_refresh = 1;
                 break;
 
@@ -382,37 +404,32 @@ static void handle_address_input(uint8_t key)
         }
         else
         {
-            /* 4位全部输入完成, 发送设置地址命令 */
-            uint8_t addr_h = (addr_input[0] << 4) | addr_input[1];
-            uint8_t addr_l = (addr_input[2] << 4) | addr_input[3];
-
-            printf("[ADDR] Set address: %c%c%c%c (0x%02X%02X)\r\n",
-                   hex_chars[addr_input[0]], hex_chars[addr_input[1]],
-                   hex_chars[addr_input[2]], hex_chars[addr_input[3]],
-                   addr_h, addr_l);
-
-            bsp_curtain_set_address(addr_h, addr_l);
-
-            /* 显示提示 */
-            oled_clear();
-            oled_show_string(0, 8,  "Address Sent!", 12);
-            oled_show_string(0, 24, "0x", 12);
+            /* 4位全部输入完成 */
+            if (addr_is_slave)
             {
-                char buf[6];
-                buf[0] = hex_chars[addr_input[0]];
-                buf[1] = hex_chars[addr_input[1]];
-                buf[2] = hex_chars[addr_input[2]];
-                buf[3] = hex_chars[addr_input[3]];
-                buf[4] = '\0';
-                oled_show_string(18, 24, buf, 12);
+                /* 从机模式: 显示提示, 等待用户按KEY3发送 */
+                printf("[ADDR] Slave mode: waiting for motor button\r\n");
+                cur_page = PAGE_ADDRESS_SLAVE;
+                need_refresh = 1;
             }
-            oled_show_string(0, 44, "Wait for LED x5", 12);
-            oled_refresh_gram();
+            else
+            {
+                /* 主动写: 直接发送 */
+                uint8_t addr_h = (addr_input[0] << 4) | addr_input[1];
+                uint8_t addr_l = (addr_input[2] << 4) | addr_input[3];
 
-            HAL_Delay(2000);
-            cur_page = PAGE_ADDRESS_MENU;
-            cur_index = 0;
-            need_refresh = 1;
+                printf("[ADDR] Write address: 0x%02X%02X\r\n", addr_h, addr_l);
+                bsp_curtain_set_address(addr_h, addr_l);
+
+                oled_clear();
+                oled_show_string(0, 12, "Address Sent!", 12);
+                oled_show_string(0, 28, "Wait for LED x5", 12);
+                oled_refresh_gram();
+                HAL_Delay(2000);
+                cur_page = PAGE_ADDRESS_MENU;
+                cur_index = 0;
+                need_refresh = 1;
+            }
         }
     }
     else if (key == KEY0_PRES)  /* 返回 */
@@ -429,10 +446,24 @@ static void handle_address_input(uint8_t key)
  */
 static void handle_slave_request(uint8_t key)
 {
-    /* TODO: 等待电机发送请求帧并自动响应 */
-    /* 目前只显示等待界面, KEY0 返回 */
+    if (key == KEY3_PRES)  /* 发送 */
+    {
+        uint8_t addr_h = (addr_input[0] << 4) | addr_input[1];
+        uint8_t addr_l = (addr_input[2] << 4) | addr_input[3];
 
-    if (key == KEY0_PRES)
+        printf("[KEY3] Slave send address: 0x%02X%02X\r\n", addr_h, addr_l);
+        bsp_curtain_set_address(addr_h, addr_l);
+
+        oled_clear();
+        oled_show_string(0, 12, "Address Sent!", 12);
+        oled_show_string(0, 28, "Wait for LED x5", 12);
+        oled_refresh_gram();
+        HAL_Delay(2000);
+        cur_page = PAGE_ADDRESS_MENU;
+        cur_index = 0;
+        need_refresh = 1;
+    }
+    else if (key == KEY0_PRES)  /* 返回 */
     {
         printf("[KEY0] Cancel slave request\r\n");
         cur_page = PAGE_ADDRESS_MENU;

@@ -36,6 +36,11 @@ typedef void (*http_request_cb_t)(uint8_t link_id, const char *method, const cha
 void bsp_esp01s_set_http_callback(http_request_cb_t cb);
 
 /******************************************************************************************/
+/* 获取IP地址 */
+
+uint8_t bsp_esp01s_get_ip(char *ip_buf, uint8_t buf_size);
+
+/******************************************************************************************/
 /* HTTP响应发送 */
 
 void bsp_esp01s_send_response(uint8_t link_id, const char *header, const char *body);

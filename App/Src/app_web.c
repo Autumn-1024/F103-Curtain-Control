@@ -205,6 +205,11 @@ void app_web_init(void)
         return;
     }
 
+    /* 获取IP地址 */
+    char ip_addr[20] = {0};
+    bsp_esp01s_get_ip(ip_addr, sizeof(ip_addr));
+    printf("[WEB] IP: %s\r\n", ip_addr);
+
     /* 启动Web服务器 */
     oled_clear();
     oled_show_string(0, 0, "Starting server", 12);
@@ -218,10 +223,10 @@ void app_web_init(void)
         /* 注册HTTP回调 */
         bsp_esp01s_set_http_callback(on_http_request);
 
-        /* 显示成功信息 */
+        /* 显示成功信息 + IP地址 */
         oled_clear();
         oled_show_string(0, 0, "WiFi OK!", 12);
-        oled_show_string(0, 14, "Web Server ON", 12);
+        oled_show_string(0, 14, ip_addr, 12);
         oled_show_string(0, 28, "Port: 80", 12);
         oled_show_string(0, 42, "4 Curtains Ready", 12);
         oled_refresh_gram();

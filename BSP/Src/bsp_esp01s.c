@@ -255,6 +255,59 @@ uint8_t bsp_esp01s_start_server(uint16_t port)
 }
 
 /**
+ * @brief       获取本机IP地址
+ * @param       ip_buf: IP字符串缓冲区
+ * @param       buf_size: 缓冲区大小
+ * @retval      1=成功, 0=失败
+ */
+uint8_t bsp_esp01s_get_ip(char *ip_buf, uint8_t buf_size)
+{
+    uint16_t pos = 0;
+    uint16_t elapsed = 0;
+    uint8_t found = 0;
+    char line[64];
+
+    esp_flush_rx();
+    esp_send_cmd("AT+CIFSR\r\n");
+
+    /* 等待响应, 解析 +CIFSR:STAIP,"xxx.xxx.xxx.xxx" */
+    while (elapsed < 5000)
+    {
+        int16_t ch = esp_read_byte();
+        if (ch >= 0)
+        {
+            if (ch == '\n')
+            {
+                line[pos] = '\0';
+                if (strncmp(line, "+CIFSR:STAIP,\"", 14) == 0)
+                {
+                    char *start = line + 14;
+                    char *end = strchr(start, '\"');
+                    if (end && (end - start) < buf_size)
+                    {
+                        strncpy(ip_buf, start, end - start);
+                        ip_buf[end - start] = '\0';
+                        found = 1;
+                    }
+                }
+                pos = 0;
+            }
+            else if (ch != '\r')
+            {
+                if (pos < sizeof(line) - 1)
+                    line[pos++] = (char)ch;
+            }
+        }
+        else
+        {
+            HAL_Delay(1);
+            elapsed++;
+        }
+    }
+    return found;
+}
+
+/**
  * @brief       设置HTTP回调
  */
 void bsp_esp01s_set_http_callback(http_request_cb_t cb)

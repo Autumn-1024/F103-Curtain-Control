@@ -414,23 +414,93 @@ void bsp_esp01s_send_response(uint8_t link_id, const char *header, const char *b
 
 /**
  * @brief       轮询处理ESP01S数据 (主循环调用)
+ *
+ * ESP01S数据格式:
+ *   +IPD,link_id,data_len:data...
+ *   冒号后面是HTTP数据, 没有换行符结尾
+ *
  */
 void bsp_esp01s_poll(void)
 {
     static char line_buf[256];
     static uint16_t line_pos = 0;
-    static uint8_t in_ipd = 0;
+
+    /* 状态机 */
+    static uint8_t state = 0;  /* 0=行模式, 1=读link_id, 2=读len, 3=读data */
     static uint8_t ipd_link = 0;
     static uint16_t ipd_len = 0;
     static uint16_t ipd_count = 0;
+    static char ipd_tmp[8];
+    static uint8_t ipd_tmp_pos = 0;
 
     int16_t ch;
 
     while ((ch = esp_read_byte()) >= 0)
     {
-        if (in_ipd)
+        switch (state)
         {
-            /* 正在接收IPD数据 */
+        case 0: /* 行模式: 检测 +IPD 或普通行 */
+            if (ch == '+')
+            {
+                /* 可能是 +IPD 开始 */
+                line_buf[0] = '+';
+                line_pos = 1;
+            }
+            else if (line_pos > 0 && line_pos < 5)
+            {
+                /* 继续匹配 "IPD," */
+                line_buf[line_pos++] = (char)ch;
+                if (line_pos == 4 && strncmp(line_buf, "+IPD", 4) == 0)
+                {
+                    /* 确认是 +IPD, 开始解析 */
+                    state = 1;
+                    ipd_tmp_pos = 0;
+                    ipd_link = 0;
+                    ipd_len = 0;
+                }
+                else if (line_pos >= 4)
+                {
+                    line_pos = 0;
+                }
+            }
+            else
+            {
+                line_pos = 0;
+            }
+            break;
+
+        case 1: /* 读取 link_id */
+            if (ch == ',')
+            {
+                ipd_tmp[ipd_tmp_pos] = '\0';
+                ipd_link = atoi(ipd_tmp);
+                state = 2;
+                ipd_tmp_pos = 0;
+            }
+            else
+            {
+                if (ipd_tmp_pos < sizeof(ipd_tmp) - 1)
+                    ipd_tmp[ipd_tmp_pos++] = (char)ch;
+            }
+            break;
+
+        case 2: /* 读取 data_len */
+            if (ch == ':')
+            {
+                ipd_tmp[ipd_tmp_pos] = '\0';
+                ipd_len = atoi(ipd_tmp);
+                state = 3;
+                ipd_count = 0;
+                line_pos = 0;
+            }
+            else
+            {
+                if (ipd_tmp_pos < sizeof(ipd_tmp) - 1)
+                    ipd_tmp[ipd_tmp_pos++] = (char)ch;
+            }
+            break;
+
+        case 3: /* 读取 data */
             if (line_pos < sizeof(line_buf) - 1)
             {
                 line_buf[line_pos++] = (char)ch;
@@ -439,9 +509,9 @@ void bsp_esp01s_poll(void)
 
             if (ipd_count >= ipd_len)
             {
-                /* IPD数据接收完成 */
+                /* 数据接收完成 */
                 line_buf[line_pos] = '\0';
-                in_ipd = 0;
+                state = 0;
 
                 /* 解析HTTP请求 */
                 if (s_http_cb)
@@ -449,7 +519,6 @@ void bsp_esp01s_poll(void)
                     char method[8] = {0};
                     char path[64] = {0};
 
-                    /* 解析 "GET /path HTTP/1.1" */
                     if (strncmp(line_buf, "GET ", 4) == 0)
                     {
                         strcpy(method, "GET");
@@ -478,57 +547,12 @@ void bsp_esp01s_poll(void)
                         s_http_cb(ipd_link, method, path);
                     }
                 }
-
-                line_pos = 0;
             }
-        }
-        else
-        {
-            /* 正常行模式 */
-            if (ch == '\n')
-            {
-                line_buf[line_pos] = '\0';
+            break;
 
-                /* 检查是否是+IPD行 */
-                if (strncmp(line_buf, "+IPD,", 5) == 0)
-                {
-                    /* 解析 +IPD,link_id,data_len:data */
-                    char *p = line_buf + 5;
-                    ipd_link = atoi(p);
-                    p = strchr(p, ',');
-                    if (p)
-                    {
-                        ipd_len = atoi(p + 1);
-                        p = strchr(p + 1, ':');
-                        if (p)
-                        {
-                            /* 冒号后面是数据开始 */
-                            p++;
-                            uint16_t data_start = strlen(p);
-                            if (data_start > 0)
-                            {
-                                memcpy(line_buf, p, data_start);
-                                line_pos = data_start;
-                            }
-                            else
-                            {
-                                line_pos = 0;
-                            }
-                            ipd_count = data_start;
-                            in_ipd = 1;
-                        }
-                    }
-                }
-
-                line_pos = 0;
-            }
-            else if (ch != '\r')
-            {
-                if (line_pos < sizeof(line_buf) - 1)
-                {
-                    line_buf[line_pos++] = (char)ch;
-                }
-            }
+        default:
+            state = 0;
+            break;
         }
     }
 }

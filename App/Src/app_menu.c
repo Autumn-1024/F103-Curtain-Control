@@ -41,6 +41,11 @@ static const char *ctrl_menu_items[CTRL_MAX] = {
     "5.Query Pos",
 };
 
+static const char *ctrl_addr_items[CTRL_ADDR_MAX] = {
+    "1.Default(FEFE)",
+    "2.Custom Addr",
+};
+
 /* 十六进制字符表 (用于地址输入) */
 static const char hex_chars[] = "0123456789ABCDEF";
 #define HEX_CHAR_COUNT  16
@@ -192,6 +197,144 @@ static void draw_slave_request(void)
 }
 
 /**
+ * @brief       绘制控制测试地址选择
+ */
+static void draw_ctrl_addr_sel(void)
+{
+    uint8_t i;
+
+    oled_clear();
+    oled_show_string(0, 0, "-- Select Addr --", 12);
+
+    for (i = 0; i < CTRL_ADDR_MAX; i++)
+    {
+        if (i == cur_index)
+            oled_show_string(0, 16 + i * 14, ">", 12);
+        oled_show_string(8, 16 + i * 14, ctrl_addr_items[i], 12);
+    }
+
+    oled_refresh_gram();
+}
+
+/**
+ * @brief       处理控制测试地址选择按键
+ */
+static void handle_ctrl_addr_sel(uint8_t key)
+{
+    if (key == KEY1_PRES)
+    {
+        if (cur_index > 0) { cur_index--; need_refresh = 1; }
+    }
+    else if (key == KEY2_PRES)
+    {
+        if (cur_index < CTRL_ADDR_MAX - 1) { cur_index++; need_refresh = 1; }
+    }
+    else if (key == KEY3_PRES)
+    {
+        if (cur_index == CTRL_ADDR_DEFAULT)
+        {
+            printf("[KEY3] Use default addr (FEFE)\r\n");
+            g_curtain_use_custom = 0;
+            cur_page = PAGE_CONTROL_MENU;
+            cur_index = 0;
+            need_refresh = 1;
+        }
+        else
+        {
+            printf("[KEY3] Custom addr input\r\n");
+            cur_page = PAGE_CTRL_ADDR_INPUT;
+            addr_is_slave = 0;
+            addr_pos = 0;
+            addr_sel = 0;
+            addr_input[0] = addr_input[1] = addr_input[2] = addr_input[3] = 0;
+            need_refresh = 1;
+        }
+    }
+    else if (key == KEY0_PRES)
+    {
+        cur_page = PAGE_MAIN_MENU;
+        cur_index = 0;
+        need_refresh = 1;
+    }
+}
+
+/**
+ * @brief       绘制控制测试自定义地址输入
+ */
+static void draw_ctrl_addr_input(void)
+{
+    char buf[22];
+    uint8_t i;
+
+    oled_clear();
+    oled_show_string(0, 0, "-- Custom Addr --", 12);
+
+    for (i = 0; i < 4; i++)
+    {
+        buf[i * 2]     = (i == addr_pos) ? '[' : ' ';
+        buf[i * 2 + 1] = hex_chars[addr_input[i]];
+    }
+    buf[8] = '\0';
+    oled_show_string(8, 16, "0x", 16);
+    oled_show_string(28, 16, buf, 16);
+
+    buf[0] = '<';
+    buf[1] = hex_chars[addr_sel];
+    buf[2] = '>';
+    buf[3] = '\0';
+    oled_show_string(50, 44, buf, 12);
+
+    oled_refresh_gram();
+}
+
+/**
+ * @brief       处理控制测试自定义地址输入
+ */
+static void handle_ctrl_addr_input(uint8_t key)
+{
+    if (key == KEY1_PRES)
+    {
+        addr_sel = (addr_sel > 0) ? addr_sel - 1 : HEX_CHAR_COUNT - 1;
+        addr_input[addr_pos] = addr_sel;
+        need_refresh = 1;
+    }
+    else if (key == KEY2_PRES)
+    {
+        addr_sel = (addr_sel < HEX_CHAR_COUNT - 1) ? addr_sel + 1 : 0;
+        addr_input[addr_pos] = addr_sel;
+        need_refresh = 1;
+    }
+    else if (key == KEY3_PRES)
+    {
+        printf("[INPUT] pos=%d char=%c\r\n", addr_pos, hex_chars[addr_input[addr_pos]]);
+
+        if (addr_pos < 3)
+        {
+            addr_pos++;
+            addr_sel = addr_input[addr_pos];
+            need_refresh = 1;
+        }
+        else
+        {
+            g_curtain_custom_addr_h = (addr_input[0] << 4) | addr_input[1];
+            g_curtain_custom_addr_l = (addr_input[2] << 4) | addr_input[3];
+            g_curtain_use_custom = 1;
+            printf("[ADDR] Custom addr: 0x%02X%02X\r\n",
+                   g_curtain_custom_addr_h, g_curtain_custom_addr_l);
+            cur_page = PAGE_CONTROL_MENU;
+            cur_index = 0;
+            need_refresh = 1;
+        }
+    }
+    else if (key == KEY0_PRES)
+    {
+        cur_page = PAGE_CTRL_ADDR_SEL;
+        cur_index = 0;
+        need_refresh = 1;
+    }
+}
+
+/**
  * @brief       绘制控制测试菜单
  */
 static void draw_ctrl_menu(void)
@@ -289,8 +432,8 @@ static void handle_main_menu(uint8_t key)
                 break;
 
             case MAIN_CONTROL:
-                printf("[KEY3] -> Control Test\r\n");
-                cur_page = PAGE_CONTROL_MENU;
+                printf("[KEY3] -> Control Test (select addr)\r\n");
+                cur_page = PAGE_CTRL_ADDR_SEL;
                 cur_index = 0;
                 need_refresh = 1;
                 break;
@@ -608,6 +751,8 @@ void app_menu_process(uint8_t key)
             case PAGE_ADDRESS_MENU:  draw_addr_menu();     break;
             case PAGE_ADDRESS_INPUT: draw_address_input(); break;
             case PAGE_ADDRESS_SLAVE: draw_slave_request(); break;
+            case PAGE_CTRL_ADDR_SEL:    draw_ctrl_addr_sel();    break;
+            case PAGE_CTRL_ADDR_INPUT:  draw_ctrl_addr_input();  break;
             case PAGE_CONTROL_MENU:  draw_ctrl_menu();     break;
             case PAGE_PERCENT:       draw_percent();       break;
             default: break;
@@ -622,6 +767,8 @@ void app_menu_process(uint8_t key)
         case PAGE_ADDRESS_MENU:  handle_addr_menu(key);     break;
         case PAGE_ADDRESS_INPUT: handle_address_input(key); break;
         case PAGE_ADDRESS_SLAVE: handle_slave_request(key); break;
+        case PAGE_CTRL_ADDR_SEL:    handle_ctrl_addr_sel(key);    break;
+        case PAGE_CTRL_ADDR_INPUT:  handle_ctrl_addr_input(key);  break;
         case PAGE_CONTROL_MENU:  handle_ctrl_menu(key);     break;
         case PAGE_PERCENT:       handle_percent(key);       break;
         default: break;

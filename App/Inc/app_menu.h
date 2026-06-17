@@ -29,6 +29,8 @@ typedef enum
     PAGE_ADDRESS_MENU,      /* 修改地址 - 选择方式 */
     PAGE_ADDRESS_INPUT,     /* 修改地址 - 手动输入 */
     PAGE_ADDRESS_SLAVE,     /* 修改地址 - 从机请求 */
+    PAGE_CTRL_ADDR_SEL,     /* 控制测试 - 选择地址 */
+    PAGE_CTRL_ADDR_INPUT,   /* 控制测试 - 输入自定义地址 */
     PAGE_CONTROL_MENU,      /* 控制测试菜单 */
     PAGE_PERCENT,           /* 百分比选择 */
     PAGE_MAX
@@ -53,6 +55,16 @@ typedef enum
     ADDR_SLAVE,             /* 从机请求分配地址 */
     ADDR_MAX
 } addr_menu_item_t;
+
+/******************************************************************************************/
+/* 控制地址选择项 */
+
+typedef enum
+{
+    CTRL_ADDR_DEFAULT = 0,  /* 默认地址 FEFE */
+    CTRL_ADDR_CUSTOM,       /* 自定义地址 */
+    CTRL_ADDR_MAX
+} ctrl_addr_item_t;
 
 /******************************************************************************************/
 /* 控制菜单项 */

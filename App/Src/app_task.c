@@ -24,6 +24,7 @@
 #include "bsp_rs485.h"
 #include "bsp_curtain.h"
 #include "app_menu.h"
+#include "app_web.h"
 #include <stdio.h>
 
 /**
@@ -64,6 +65,9 @@ void app_start(void)
             }
             printf("\r\n");
         }
+
+        /* Web服务器轮询 */
+        app_web_process();
 
         t++;
         HAL_Delay(10);

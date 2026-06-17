@@ -22,7 +22,9 @@
 #include "bsp_oled.h"
 #include "bsp_rs485.h"
 #include "bsp_curtain.h"
+#include "bsp_esp01s.h"
 #include "app_task.h"
+#include "app_web.h"
 
 /**
  * @brief       系统时钟配置 (HSE 8MHz -> 72MHz)
@@ -74,10 +76,7 @@ int main(void)
     bsp_rs485_init(9600);
     bsp_curtain_init();
 
-    printf("\r\n========================================\r\n");
-    printf("  STM32F103C8T6 窗帘控制系统\r\n");
-    printf("  RS485 9600bps Addr:FE FE\r\n");
-    printf("========================================\r\n\r\n");
+    app_web_init();
 
     app_start();    /* 交给应用层 */
 
